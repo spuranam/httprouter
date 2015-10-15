@@ -15,12 +15,12 @@
 //      "log"
 //  )
 //
-//  func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+//  func Index(w http.ResponseWriter, r *http.Request) {
 //      fmt.Fprint(w, "Welcome!\n")
 //  }
 //
-//  func Hello(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-//      fmt.Fprintf(w, "hello, %s!\n", ps.ByName("name"))
+//  func Hello(w http.ResponseWriter, r *http.Request) {
+//      fmt.Fprintf(w, "hello, %s!\n", r.URL.Query().Get(":name"))
 //  }
 //
 //  func main() {
@@ -63,49 +63,28 @@
 //   /files/LICENSE                      match: filepath="/LICENSE"
 //   /files/templates/article.html       match: filepath="/templates/article.html"
 //   /files                              no match, but the router would redirect
-//
-// The value of parameters is saved as a slice of the Param struct, consisting
-// each of a key and a value. The slice is passed to the Handle func as a third
-// parameter.
-// There are two ways to retrieve the value of a parameter:
-//  // by the name of the parameter
-//  user := ps.ByName("user") // defined by :user or *user
-//
-//  // by the index of the parameter. This way you can also get the name (key)
-//  thirdKey   := ps[2].Key   // the name of the 3rd parameter
-//  thirdValue := ps[2].Value // the value of the 3rd parameter
 package httprouter
 
 import (
 	"net/http"
+	"net/url"
 )
 
 // Handle is a function that can be registered to a route to handle HTTP
 // requests. Like http.HandlerFunc, but has a third parameter for the values of
 // wildcards (variables).
-type Handle func(http.ResponseWriter, *http.Request, Params)
+type Handle func(http.ResponseWriter, *http.Request)
 
-// Param is a single URL parameter, consisting of a key and a value.
-type Param struct {
-	Key   string
-	Value string
+// param is a single URL parameter, consisting of a key and a value.
+type param struct {
+	key   string
+	value string
 }
 
-// Params is a Param-slice, as returned by the router.
+// params is a param-slice, as returned by the router.
 // The slice is ordered, the first URL parameter is also the first slice value.
 // It is therefore safe to read values by the index.
-type Params []Param
-
-// ByName returns the value of the first Param which key matches the given name.
-// If no matching Param is found, an empty string is returned.
-func (ps Params) ByName(name string) string {
-	for i := range ps {
-		if ps[i].Key == name {
-			return ps[i].Value
-		}
-	}
-	return ""
-}
+type params []param
 
 // Router is a http.Handler which can be used to dispatch requests to different
 // handler functions via configurable routes
@@ -168,39 +147,39 @@ func New() *Router {
 	}
 }
 
-// GET is a shortcut for router.Handle("GET", path, handle)
-func (r *Router) GET(path string, handle Handle) {
-	r.Handle("GET", path, handle)
+// GET is a shortcut for router.HandlerFunc("GET", path, handle)
+func (r *Router) GET(path string, handle http.HandlerFunc) {
+	r.HandlerFunc("GET", path, handle)
 }
 
-// HEAD is a shortcut for router.Handle("HEAD", path, handle)
-func (r *Router) HEAD(path string, handle Handle) {
-	r.Handle("HEAD", path, handle)
+// HEAD is a shortcut for router.HandlerFunc("HEAD", path, handle)
+func (r *Router) HEAD(path string, handle http.HandlerFunc) {
+	r.HandlerFunc("HEAD", path, handle)
 }
 
-// OPTIONS is a shortcut for router.Handle("OPTIONS", path, handle)
-func (r *Router) OPTIONS(path string, handle Handle) {
-	r.Handle("OPTIONS", path, handle)
+// OPTIONS is a shortcut for router.HandlerFunc("OPTIONS", path, handle)
+func (r *Router) OPTIONS(path string, handle http.HandlerFunc) {
+	r.HandlerFunc("OPTIONS", path, handle)
 }
 
-// POST is a shortcut for router.Handle("POST", path, handle)
-func (r *Router) POST(path string, handle Handle) {
-	r.Handle("POST", path, handle)
+// POST is a shortcut for router.HandlerFunc("POST", path, handle)
+func (r *Router) POST(path string, handle http.HandlerFunc) {
+	r.HandlerFunc("POST", path, handle)
 }
 
-// PUT is a shortcut for router.Handle("PUT", path, handle)
-func (r *Router) PUT(path string, handle Handle) {
-	r.Handle("PUT", path, handle)
+// PUT is a shortcut for router.HandlerFunc("PUT", path, handle)
+func (r *Router) PUT(path string, handle http.HandlerFunc) {
+	r.HandlerFunc("PUT", path, handle)
 }
 
-// PATCH is a shortcut for router.Handle("PATCH", path, handle)
-func (r *Router) PATCH(path string, handle Handle) {
-	r.Handle("PATCH", path, handle)
+// PATCH is a shortcut for router.HandlerFunc("PATCH", path, handle)
+func (r *Router) PATCH(path string, handle http.HandlerFunc) {
+	r.HandlerFunc("PATCH", path, handle)
 }
 
-// DELETE is a shortcut for router.Handle("DELETE", path, handle)
-func (r *Router) DELETE(path string, handle Handle) {
-	r.Handle("DELETE", path, handle)
+// DELETE is a shortcut for router.HandlerFunc("DELETE", path, handle)
+func (r *Router) DELETE(path string, handle http.HandlerFunc) {
+	r.HandlerFunc("DELETE", path, handle)
 }
 
 // Handle registers a new request handle with the given path and method.
@@ -233,7 +212,7 @@ func (r *Router) Handle(method, path string, handle Handle) {
 // request handle.
 func (r *Router) Handler(method, path string, handler http.Handler) {
 	r.Handle(method, path,
-		func(w http.ResponseWriter, req *http.Request, _ Params) {
+		func(w http.ResponseWriter, req *http.Request) {
 			handler.ServeHTTP(w, req)
 		},
 	)
@@ -262,8 +241,8 @@ func (r *Router) ServeFiles(path string, root http.FileSystem) {
 
 	fileServer := http.FileServer(root)
 
-	r.GET(path, func(w http.ResponseWriter, req *http.Request, ps Params) {
-		req.URL.Path = ps.ByName("filepath")
+	r.Handle("GET", path, func(w http.ResponseWriter, req *http.Request) {
+		req.URL.Path = req.URL.Query().Get(":filepath")
 		fileServer.ServeHTTP(w, req)
 	})
 }
@@ -279,7 +258,7 @@ func (r *Router) recv(w http.ResponseWriter, req *http.Request) {
 // If the path was found, it returns the handle function and the path parameter
 // values. Otherwise the third return value indicates whether a redirection to
 // the same path with an extra / without the trailing slash should be performed.
-func (r *Router) Lookup(method, path string) (Handle, Params, bool) {
+func (r *Router) Lookup(method, path string) (Handle, params, bool) {
 	if root := r.trees[method]; root != nil {
 		return root.getValue(path)
 	}
@@ -296,7 +275,15 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		path := req.URL.Path
 
 		if handle, ps, tsr := root.getValue(path); handle != nil {
-			handle(w, req, ps)
+			// Send params to query object.
+			queryValues := req.URL.Query()
+			for _, p := range ps {
+				newKey := append([]byte(":"), p.key...)
+				queryValues.Add(string(newKey), p.value)
+			}
+			req.URL.RawQuery = url.Values(queryValues).Encode() + "&" + req.URL.RawQuery
+
+			handle(w, req)
 			return
 		} else if req.Method != "CONNECT" && path != "/" {
 			code := 301 // Permanent redirect, request with GET method
