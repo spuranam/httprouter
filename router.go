@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be found
 // in the LICENSE file.
 
-// Package httprouter is a trie based high performance HTTP request router.
+// Package router is a trie based high performance HTTP request router.
 //
 // A trivial example is:
 //
@@ -10,7 +10,7 @@
 //
 //  import (
 //      "fmt"
-//      "github.com/spuranam/httprouter"
+//      "github.com/spuranam/router"
 //      "net/http"
 //      "log"
 //  )
@@ -24,9 +24,9 @@
 //  }
 //
 //  func main() {
-//      router := httprouter.New()
-//      router.GET("/", Index)
-//      router.GET("/hello/:name", Hello)
+//      r := router.New()
+//      r.GET("/", Index)
+//      r.GET("/hello/:name", Hello)
 //
 //      log.Fatal(http.ListenAndServe(":8080", router))
 //  }
@@ -63,7 +63,7 @@
 //   /files/LICENSE                      match: filepath="/LICENSE"
 //   /files/templates/article.html       match: filepath="/templates/article.html"
 //   /files                              no match, but the router would redirect
-package httprouter
+package router
 
 import (
 	"net/http"
